@@ -159,7 +159,7 @@ module ActionDispatch
   #
   #   controller 'geocode' do
   #     get 'geocode/:postalcode' => :show, constraints: {
-  #       postalcode: /# Postcode format
+  #       postalcode: /# Postalcode format
   #          \d{5} #Prefix
   #          (-\d{4})? #Suffix
   #          /x
@@ -237,9 +237,9 @@ module ActionDispatch
   #
   # == View a list of all your routes
   #
-  #   rake routes
+  #   rails routes
   #
-  # Target specific controllers by prefixing the command with <tt>CONTROLLER=x</tt>.
+  # Target specific controllers by prefixing the command with <tt>-c</tt> option.
   #
   module Routing
     extend ActiveSupport::Autoload

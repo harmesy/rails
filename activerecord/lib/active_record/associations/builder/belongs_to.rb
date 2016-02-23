@@ -5,7 +5,7 @@ module ActiveRecord::Associations::Builder # :nodoc:
     end
 
     def self.valid_options(options)
-      super + [:foreign_type, :polymorphic, :touch, :counter_cache, :optional]
+      super + [:polymorphic, :touch, :counter_cache, :optional]
     end
 
     def self.valid_dependent_options
@@ -106,8 +106,7 @@ module ActiveRecord::Associations::Builder # :nodoc:
       touch       = reflection.options[:touch]
 
       callback = lambda { |record|
-        touch_method = touching_delayed_records? ? :touch : :touch_later
-        BelongsTo.touch_record(record, foreign_key, n, touch, touch_method)
+        BelongsTo.touch_record(record, foreign_key, n, touch, belongs_to_touch_method)
       }
 
       model.after_save    callback, if: :changed?

@@ -20,7 +20,7 @@ module Rails
 
         # Set the message to be shown in logs. Uses the git repo if one is given,
         # otherwise use name (version).
-        parts, message = [ quote(name) ], name
+        parts, message = [ quote(name) ], name.dup
         if version ||= options.delete(:version)
           parts   << quote(version)
           message << " (#{version})"
@@ -75,7 +75,7 @@ module Rails
 
         in_root do
           if block
-            append_file "Gemfile", "source #{quote(source)} do", force: true
+            append_file "Gemfile", "\nsource #{quote(source)} do", force: true
             @in_group = true
             instance_eval(&block)
             @in_group = false

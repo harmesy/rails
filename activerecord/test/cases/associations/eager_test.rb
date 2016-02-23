@@ -1216,7 +1216,7 @@ class EagerAssociationTest < ActiveRecord::TestCase
   end
 
   def test_join_eager_with_empty_order_should_generate_valid_sql
-    assert_nothing_raised(ActiveRecord::StatementInvalid) do
+    assert_nothing_raised do
       Post.includes(:comments).order("").where(:comments => {:body => "Thank you for the welcome"}).first
     end
   end
@@ -1401,5 +1401,11 @@ class EagerAssociationTest < ActiveRecord::TestCase
   test "eager-loading a polymorphic association with references to the associated table" do
     post = Post.eager_load(:tags).where('tags.name = ?', 'General').first
     assert_equal posts(:welcome), post
+  end
+
+  # CollectionProxy#reader is expensive, so the preloader avoids calling it.
+  test "preloading has_many_through association avoids calling association.reader" do
+    ActiveRecord::Associations::HasManyAssociation.any_instance.expects(:reader).never
+    Author.preload(:readonly_comments).first!
   end
 end

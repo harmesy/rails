@@ -1,5 +1,6 @@
 require 'active_record/connection_adapters/abstract_adapter'
 require 'active_record/connection_adapters/statement_pool'
+require 'active_record/connection_adapters/sqlite3/explain_pretty_printer'
 require 'active_record/connection_adapters/sqlite3/schema_creation'
 
 gem 'sqlite3', '~> 1.3.6'
@@ -7,7 +8,6 @@ require 'sqlite3'
 
 module ActiveRecord
   module ConnectionHandling # :nodoc:
-    # sqlite3 adapter reuses sqlite_connection.
     def sqlite3_connection(config)
       # Require database.
       unless config[:database]
@@ -78,11 +78,10 @@ module ActiveRecord
       end
 
       def initialize(connection, logger, connection_options, config)
-        super(connection, logger)
+        super(connection, logger, config)
 
         @active     = nil
         @statements = StatementPool.new(self.class.type_cast_config_to_integer(config.fetch(:statement_limit) { 1000 }))
-        @config = config
 
         @visitor = Arel::Visitors::SQLite.new self
         @quoted_column_names = {}
@@ -127,6 +126,10 @@ module ActiveRecord
       end
 
       def supports_views?
+        true
+      end
+
+      def supports_datetime_with_precision?
         true
       end
 
@@ -215,21 +218,7 @@ module ActiveRecord
 
       def explain(arel, binds = [])
         sql = "EXPLAIN QUERY PLAN #{to_sql(arel, binds)}"
-        ExplainPrettyPrinter.new.pp(exec_query(sql, 'EXPLAIN', []))
-      end
-
-      class ExplainPrettyPrinter
-        # Pretty prints the result of an EXPLAIN QUERY PLAN in a way that resembles
-        # the output of the SQLite shell:
-        #
-        #   0|0|0|SEARCH TABLE users USING INTEGER PRIMARY KEY (rowid=?) (~1 rows)
-        #   0|1|1|SCAN TABLE posts (~100000 rows)
-        #
-        def pp(result) # :nodoc:
-          result.rows.map do |row|
-            row.join('|')
-          end.join("\n") + "\n"
-        end
+        SQLite3::ExplainPrettyPrinter.new.pp(exec_query(sql, 'EXPLAIN', []))
       end
 
       def exec_query(sql, name = nil, binds = [], prepare: false)
@@ -276,22 +265,6 @@ module ActiveRecord
       def execute(sql, name = nil) #:nodoc:
         log(sql, name) { @connection.execute(sql) }
       end
-
-      def update_sql(sql, name = nil) #:nodoc:
-        super
-        @connection.changes
-      end
-
-      def delete_sql(sql, name = nil) #:nodoc:
-        sql += " WHERE 1=1" unless sql =~ /WHERE/i
-        super sql, name
-      end
-
-      def insert_sql(sql, name = nil, pk = nil, id_value = nil, sequence_name = nil) #:nodoc:
-        super
-        id_value || @connection.last_insert_row_id
-      end
-      alias :create :insert_sql
 
       def select_rows(sql, name = nil, binds = [])
         exec_query(sql, name, binds).rows

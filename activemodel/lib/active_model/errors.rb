@@ -81,6 +81,18 @@ module ActiveModel
       super
     end
 
+    # Copies the errors from <tt>other</tt>.
+    #
+    # other - The ActiveModel::Errors instance.
+    #
+    # Examples
+    #
+    #   person.errors.copy!(other)
+    def copy!(other) # :nodoc:
+      @messages = other.messages.dup
+      @details  = other.details.dup
+    end
+
     # Clear the error messages.
     #
     #   person.errors.full_messages # => ["name cannot be nil"]
@@ -148,6 +160,15 @@ module ActiveModel
     #
     #   person.errors[:name]  # => ["cannot be nil"]
     #   person.errors['name'] # => ["cannot be nil"]
+    #
+    # Note that, if you try to get errors of an attribute which has
+    # no errors associated with it, this method will instantiate
+    # an empty error list for it and +keys+ will return an array
+    # of error keys which includes this attribute.
+    #
+    #   person.errors.keys    # => []
+    #   person.errors[:name]  # => []
+    #   person.errors.keys    # => [:name]
     def [](attribute)
       messages[attribute.to_sym]
     end
@@ -306,7 +327,7 @@ module ActiveModel
     #   # => {:base=>[{error: :name_or_email_blank}]}
     def add(attribute, message = :invalid, options = {})
       message = message.call if message.respond_to?(:call)
-      detail  = normalize_detail(attribute, message, options)
+      detail  = normalize_detail(message, options)
       message = normalize_message(attribute, message, options)
       if exception = options[:strict]
         exception = ActiveModel::StrictValidationFailed if exception == true
@@ -481,7 +502,7 @@ module ActiveModel
       end
     end
 
-    def normalize_detail(attribute, message, options)
+    def normalize_detail(message, options)
       { error: message }.merge(options.except(*CALLBACKS_OPTIONS + MESSAGE_OPTIONS))
     end
   end

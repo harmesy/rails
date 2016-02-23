@@ -16,6 +16,21 @@ Before attempting to upgrade an existing application, you should be sure you hav
 
 The best way to be sure that your application still works after upgrading is to have good test coverage before you start the process. If you don't have automated tests that exercise the bulk of your application, you'll need to spend time manually exercising all the parts that have changed. In the case of a Rails upgrade, that will mean every single piece of functionality in the application. Do yourself a favor and make sure your test coverage is good _before_ you start an upgrade.
 
+### The Upgrade Process
+
+When changing Rails versions, it's best to move slowly, one minor version at a time, in order to make good use of the deprecation warnings. Rails version numbers are in the form Major.Minor.Patch. Major and Minor versions are allowed to make changes to the public API, so this may cause errors in your application. Patch versions only include bug fixes, and don't change any public API.
+
+The process should go as follows:
+
+1. Write tests and make sure they pass
+2. Move to the latest patch version after your current version
+3. Fix tests and deprecated features
+4. Move to the latest patch version of the next minor version
+
+Repeat this process until you reach your target Rails version. Each time you move versions, you will need to change the Rails version number in the Gemfile (and possibly other gem versions) and run `bundle update`. Then run the Update rake task mentioned below to update configuration files, then run your tests.
+
+You can find a list of all released Rails versions [here](https://rubygems.org/gems/rails/versions).
+
 ### Ruby Versions
 
 Rails generally stays close to the latest released Ruby version when it's released:
@@ -53,7 +68,30 @@ Don't forget to review the difference, to see if there were any unexpected chang
 Upgrading from Rails 4.2 to Rails 5.0
 -------------------------------------
 
-### Halting callback chains by returning `false`
+### Ruby 2.2.2+
+
+ToDo...
+
+### Active Record models now inherit from ApplicationRecord by default
+
+In Rails 4.2 an Active Record model inherits from `ActiveRecord::Base`. In Rails 5.0,
+all models inherit from `ApplicationRecord`.
+
+`ApplicationRecord` is a new superclass for all app models, analogous to app
+controllers subclassing `ApplicationController` instead of
+`ActionController::Base`. This gives apps a single spot to configure app-wide
+model behavior.
+
+When upgrading from Rails 4.2 to Rails 5.0 you need to create an
+`application_record.rb` file in `app/models/` and add the following content:
+
+```
+class ApplicationRecord < ActiveRecord::Base
+  self.abstract_class = true
+end
+```
+
+### Halting callback chains via `throw(:abort)`
 
 In Rails 4.2, when a 'before' callback returns `false` in Active Record
 and Active Model, then the entire callback chain is halted. In other words,
@@ -145,7 +183,7 @@ the logs. In the next version, these errors will no longer be suppressed.
 Instead, the errors will propagate normally just like in other Active
 Record callbacks.
 
-When you define a `after_rollback` or `after_commit` callback, you
+When you define an `after_rollback` or `after_commit` callback, you
 will receive a deprecation warning about this upcoming change. When
 you are ready, you can opt into the new behavior and remove the
 deprecation warning by adding following configuration to your
@@ -379,7 +417,7 @@ secrets, you need to:
 
 3. Remove the `secret_token.rb` initializer.
 
-4. Use `rake secret` to generate new keys for the `development` and `test` sections.
+4. Use `rails secret` to generate new keys for the `development` and `test` sections.
 
 5. Restart your server.
 
@@ -944,7 +982,7 @@ Please read [Pull Request #9978](https://github.com/rails/rails/pull/9978) for d
 
 * Rails 4.0 has removed the XML parameters parser. You will need to add the `actionpack-xml_parser` gem if you require this feature.
 
-* Rails 4.0 changes the default `layout` lookup set using symbols or procs that return nil. To get the "no layout" behavior, return false instead of nil. 
+* Rails 4.0 changes the default `layout` lookup set using symbols or procs that return nil. To get the "no layout" behavior, return false instead of nil.
 
 * Rails 4.0 changes the default memcached client from `memcache-client` to `dalli`. To upgrade, simply add `gem 'dalli'` to your `Gemfile`.
 

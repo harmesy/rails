@@ -129,6 +129,18 @@ module Rails
           uncountable? ? "#{plural_table_name}_index" : plural_table_name
         end
 
+        def show_helper
+          "#{singular_table_name}_url(@#{singular_table_name})"
+        end
+
+        def edit_helper
+          "edit_#{show_helper}"
+        end
+
+        def new_helper
+          "new_#{singular_table_name}_url"
+        end
+
         def singular_table_name
           @singular_table_name ||= (pluralize_table_names? ? table_name.singularize : table_name)
         end
@@ -147,6 +159,10 @@ module Rails
 
         def route_url
           @route_url ||= class_path.collect {|dname| "/" + dname }.join + "/" + plural_file_name
+        end
+
+        def url_helper_prefix
+          @url_helper_prefix ||= (class_path + [file_name]).join('_')
         end
 
         # Tries to retrieve the application name or simply return application.

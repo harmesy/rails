@@ -19,7 +19,7 @@ module ActiveRecord
         relation = build_relation(finder_class, table, attribute, value)
         if record.persisted? && finder_class.primary_key.to_s != attribute.to_s
           if finder_class.primary_key
-            relation = relation.where.not(finder_class.primary_key => record.id)
+            relation = relation.where.not(finder_class.primary_key => record.id_was)
           else
             raise UnknownPrimaryKey.new(finder_class, "Can not validate uniqueness for persisted record without primary key.")
           end
@@ -57,13 +57,12 @@ module ActiveRecord
           value = value.attributes[reflection.klass.primary_key] unless value.nil?
         end
 
-        attribute_name = attribute.to_s
-
         # the attribute may be an aliased attribute
-        if klass.attribute_aliases[attribute_name]
-          attribute = klass.attribute_aliases[attribute_name]
-          attribute_name = attribute.to_s
+        if klass.attribute_alias?(attribute)
+          attribute = klass.attribute_alias(attribute)
         end
+
+        attribute_name = attribute.to_s
 
         column = klass.columns_hash[attribute_name]
         cast_type = klass.type_for_attribute(attribute_name)
@@ -73,15 +72,18 @@ module ActiveRecord
           value = value.to_s[0, column.limit]
         end
 
-        value = Arel::Nodes::Quoted.new(value)
-
         comparison = if !options[:case_sensitive] && !value.nil?
           # will use SQL LOWER function before comparison, unless it detects a case insensitive collation
           klass.connection.case_insensitive_comparison(table, attribute, column, value)
         else
           klass.connection.case_sensitive_comparison(table, attribute, column, value)
         end
-        klass.unscoped.where(comparison)
+        if value.nil?
+          klass.unscoped.where(comparison)
+        else
+          bind = Relation::QueryAttribute.new(attribute_name, value, Type::Value.new)
+          klass.unscoped.where(comparison, bind)
+        end
       rescue RangeError
         klass.none
       end
@@ -231,7 +233,6 @@ module ActiveRecord
       #
       # The following bundled adapters throw the ActiveRecord::RecordNotUnique exception:
       #
-      # * ActiveRecord::ConnectionAdapters::MysqlAdapter.
       # * ActiveRecord::ConnectionAdapters::Mysql2Adapter.
       # * ActiveRecord::ConnectionAdapters::SQLite3Adapter.
       # * ActiveRecord::ConnectionAdapters::PostgreSQLAdapter.

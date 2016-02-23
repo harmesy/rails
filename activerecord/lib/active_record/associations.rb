@@ -1164,6 +1164,7 @@ module ActiveRecord
       #   Adds one or more objects to the collection by setting their foreign keys to the collection's primary key.
       #   Note that this operation instantly fires update SQL without waiting for the save or update call on the
       #   parent object, unless the parent object is a new record.
+      #   This will also run validations and callbacks of associated object(s).
       # [collection.delete(object, ...)]
       #   Removes one or more objects from the collection by setting their foreign keys to +NULL+.
       #   Objects will be in addition destroyed if they're associated with <tt>dependent: :destroy</tt>,
@@ -1181,7 +1182,8 @@ module ActiveRecord
       # [collection=objects]
       #   Replaces the collections content by deleting and adding objects as appropriate. If the <tt>:through</tt>
       #   option is true callbacks in the join models are triggered except destroy callbacks, since deletion is
-      #   direct.
+      #   direct by default. You can specify <tt>dependent: :destroy</tt> or
+      #   <tt>dependent: :nullify</tt> to override this.
       # [collection_singular_ids]
       #   Returns an array of the associated objects' ids
       # [collection_singular_ids=ids]
@@ -1591,6 +1593,8 @@ module ActiveRecord
       #   If true, the associated object will be touched (the updated_at/on attributes set to current time)
       #   when this record is either saved or destroyed. If you specify a symbol, that attribute
       #   will be updated with the current time in addition to the updated_at/on attribute.
+      #   Please note that with touching no validation is performed and only the +after_touch+,
+      #   +after_commit+ and +after_rollback+ callbacks are executed.
       # [:inverse_of]
       #   Specifies the name of the #has_one or #has_many association on the associated
       #   object that is the inverse of this #belongs_to association. Does not work in
@@ -1639,7 +1643,7 @@ module ActiveRecord
       # The join table should not have a primary key or a model associated with it. You must manually generate the
       # join table with a migration such as this:
       #
-      #   class CreateDevelopersProjectsJoinTable < ActiveRecord::Migration
+      #   class CreateDevelopersProjectsJoinTable < ActiveRecord::Migration[5.0]
       #     def change
       #       create_join_table :developers, :projects
       #     end

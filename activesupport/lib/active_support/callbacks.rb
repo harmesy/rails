@@ -71,7 +71,7 @@ module ActiveSupport
     # halt the entire callback chain and display a deprecation message.
     # If false, callback chains will only be halted by calling +throw :abort+.
     # Defaults to +true+.
-    mattr_accessor(:halt_and_display_warning_on_return_false) { true }
+    mattr_accessor(:halt_and_display_warning_on_return_false, instance_writer: false) { true }
 
     # Runs the callbacks for the given event.
     #
@@ -295,6 +295,13 @@ module ActiveSupport
 
     class Callback #:nodoc:#
       def self.build(chain, filter, kind, options)
+        if filter.is_a?(String)
+          ActiveSupport::Deprecation.warn(<<-MSG.squish)
+            Passing string to define callback is deprecated and will be removed
+            in Rails 5.1 without replacement.
+          MSG
+        end
+
         new chain.name, filter, kind, options, chain.config
       end
 
@@ -575,7 +582,7 @@ module ActiveSupport
       #   set_callback :save, :before_meth
       #
       # The callback can be specified as a symbol naming an instance method; as a
-      # proc, lambda, or block; as a string to be instance evaluated; or as an
+      # proc, lambda, or block; as a string to be instance evaluated(deprecated); or as an
       # object that responds to a certain method determined by the <tt>:scope</tt>
       # argument to +define_callbacks+.
       #
@@ -735,7 +742,7 @@ module ActiveSupport
         options = names.extract_options!
 
         names.each do |name|
-          class_attribute "_#{name}_callbacks"
+          class_attribute "_#{name}_callbacks", instance_writer: false
           set_callbacks name, CallbackChain.new(name, options)
 
           module_eval <<-RUBY, __FILE__, __LINE__ + 1

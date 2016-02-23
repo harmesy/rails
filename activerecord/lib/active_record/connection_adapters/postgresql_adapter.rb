@@ -5,6 +5,7 @@ require 'pg'
 require "active_record/connection_adapters/abstract_adapter"
 require "active_record/connection_adapters/postgresql/column"
 require "active_record/connection_adapters/postgresql/database_statements"
+require "active_record/connection_adapters/postgresql/explain_pretty_printer"
 require "active_record/connection_adapters/postgresql/oid"
 require "active_record/connection_adapters/postgresql/quoting"
 require "active_record/connection_adapters/postgresql/referential_integrity"
@@ -100,6 +101,12 @@ module ActiveRecord
         ltree:       { name: "ltree" },
         citext:      { name: "citext" },
         point:       { name: "point" },
+        line:        { name: "line" },
+        lseg:        { name: "lseg" },
+        box:         { name: "box" },
+        path:        { name: "path" },
+        polygon:     { name: "polygon" },
+        circle:      { name: "circle" },
         bit:         { name: "bit" },
         bit_varying: { name: "bit varying" },
         money:       { name: "money" },
@@ -186,7 +193,7 @@ module ActiveRecord
 
       # Initializes and connects a PostgreSQL adapter.
       def initialize(connection, logger, connection_parameters, config)
-        super(connection, logger)
+        super(connection, logger, config)
 
         @visitor = Arel::Visitors::PostgreSQL.new self
         if self.class.type_cast_config_to_boolean(config.fetch(:prepared_statements) { true })
@@ -196,7 +203,7 @@ module ActiveRecord
           @prepared_statements = false
         end
 
-        @connection_parameters, @config = connection_parameters, config
+        @connection_parameters = connection_parameters
 
         # @local_tz is initialized as nil to avoid warnings when connect tries to use it
         @local_tz = nil
@@ -207,8 +214,8 @@ module ActiveRecord
         @statements = StatementPool.new @connection,
                                         self.class.type_cast_config_to_integer(config.fetch(:statement_limit) { 1000 })
 
-        if postgresql_version < 80200
-          raise "Your version of PostgreSQL (#{postgresql_version}) is too old, please upgrade!"
+        if postgresql_version < 90100
+          raise "Your version of PostgreSQL (#{postgresql_version}) is too old. Active Record supports PostgreSQL >= 9.1."
         end
 
         add_pg_decoders
@@ -290,9 +297,8 @@ module ActiveRecord
         true
       end
 
-      # Returns true if pg > 9.1
       def supports_extensions?
-        postgresql_version >= 90100
+        true
       end
 
       # Range datatypes weren't introduced until PostgreSQL 9.2
@@ -304,18 +310,18 @@ module ActiveRecord
         postgresql_version >= 90300
       end
 
-      def get_advisory_lock(key) # :nodoc:
-        unless key.is_a?(Integer) && key.bit_length <= 63
-          raise(ArgumentError, "Postgres requires advisory lock keys to be a signed 64 bit integer")
+      def get_advisory_lock(lock_id) # :nodoc:
+        unless lock_id.is_a?(Integer) && lock_id.bit_length <= 63
+          raise(ArgumentError, "Postgres requires advisory lock ids to be a signed 64 bit integer")
         end
-        select_value("SELECT pg_try_advisory_lock(#{key});")
+        select_value("SELECT pg_try_advisory_lock(#{lock_id});")
       end
 
-      def release_advisory_lock(key) # :nodoc:
-        unless key.is_a?(Integer) && key.bit_length <= 63
-          raise(ArgumentError, "Postgres requires advisory lock keys to be a signed 64 bit integer")
+      def release_advisory_lock(lock_id) # :nodoc:
+        unless lock_id.is_a?(Integer) && lock_id.bit_length <= 63
+          raise(ArgumentError, "Postgres requires advisory lock ids to be a signed 64 bit integer")
         end
-        select_value("SELECT pg_advisory_unlock(#{key})")
+        select_value("SELECT pg_advisory_unlock(#{lock_id})")
       end
 
       def enable_extension(name)
@@ -384,12 +390,12 @@ module ActiveRecord
         "average" => "avg",
       }
 
-      protected
+      # Returns the version of the connected PostgreSQL server.
+      def postgresql_version
+        @connection.server_version
+      end
 
-        # Returns the version of the connected PostgreSQL server.
-        def postgresql_version
-          @connection.server_version
-        end
+      protected
 
         # See http://www.postgresql.org/docs/current/static/errcodes-appendix.html
         FOREIGN_KEY_VIOLATION = "23503"
@@ -455,15 +461,15 @@ module ActiveRecord
           m.register_type 'macaddr', OID::SpecializedString.new(:macaddr)
           m.register_type 'citext', OID::SpecializedString.new(:citext)
           m.register_type 'ltree', OID::SpecializedString.new(:ltree)
+          m.register_type 'line', OID::SpecializedString.new(:line)
+          m.register_type 'lseg', OID::SpecializedString.new(:lseg)
+          m.register_type 'box', OID::SpecializedString.new(:box)
+          m.register_type 'path', OID::SpecializedString.new(:path)
+          m.register_type 'polygon', OID::SpecializedString.new(:polygon)
+          m.register_type 'circle', OID::SpecializedString.new(:circle)
 
           # FIXME: why are we keeping these types as strings?
           m.alias_type 'interval', 'varchar'
-          m.alias_type 'path', 'varchar'
-          m.alias_type 'line', 'varchar'
-          m.alias_type 'polygon', 'varchar'
-          m.alias_type 'circle', 'varchar'
-          m.alias_type 'lseg', 'varchar'
-          m.alias_type 'box', 'varchar'
 
           register_class_with_precision m, 'time', Type::Time
           register_class_with_precision m, 'timestamp', OID::DateTime
@@ -506,8 +512,13 @@ module ActiveRecord
         def extract_value_from_default(default) # :nodoc:
           case default
             # Quoted types
-            when /\A[\(B]?'(.*)'::/m
-              $1.gsub("''".freeze, "'".freeze)
+            when /\A[\(B]?'(.*)'.*::"?([\w. ]+)"?(?:\[\])?\z/m
+              # The default 'now'::date is CURRENT_DATE
+              if $1 == "now".freeze && $2 == "date".freeze
+                nil
+              else
+                $1.gsub("''".freeze, "'".freeze)
+              end
             # Boolean types
             when 'true'.freeze, 'false'.freeze
               default
@@ -529,7 +540,7 @@ module ActiveRecord
         end
 
         def has_default_function?(default_value, default) # :nodoc:
-          !default_value && (%r{\w+\(.*\)} === default)
+          !default_value && (%r{\w+\(.*\)|\(.*\)::\w+} === default)
         end
 
         def load_additional_types(type_map, oids = nil) # :nodoc:
@@ -634,12 +645,6 @@ module ActiveRecord
         # connected server's characteristics.
         def connect
           @connection = PGconn.connect(@connection_parameters)
-
-          # Money type has a fixed precision of 10 in PostgreSQL 8.2 and below, and as of
-          # PostgreSQL 8.3 it has a fixed precision of 19. PostgreSQLColumn.extract_precision
-          # should know about this but can't detect it there, so deal with it here.
-          OID::Money.precision = (postgresql_version >= 80300) ? 19 : 10
-
           configure_connection
         rescue ::PG::Error => error
           if error.message.include?("does not exist")
@@ -684,15 +689,7 @@ module ActiveRecord
         end
 
         # Returns the current ID of a table's sequence.
-        def last_insert_id(sequence_name) #:nodoc:
-          Integer(last_insert_id_value(sequence_name))
-        end
-
-        def last_insert_id_value(sequence_name)
-          last_insert_id_result(sequence_name).rows.first.first
-        end
-
-        def last_insert_id_result(sequence_name) #:nodoc:
+        def last_insert_id_result(sequence_name) # :nodoc:
           exec_query("SELECT currval('#{sequence_name}')", 'SQL')
         end
 
@@ -734,7 +731,7 @@ module ActiveRecord
         end
 
         def create_table_definition(name, temporary = false, options = nil, as = nil) # :nodoc:
-          PostgreSQL::TableDefinition.new native_database_types, name, temporary, options, as
+          PostgreSQL::TableDefinition.new(name, temporary, options, as)
         end
 
         def can_perform_case_insensitive_comparison_for?(column)
@@ -810,9 +807,8 @@ module ActiveRecord
         ActiveRecord::Type.register(:json, OID::Json, adapter: :postgresql)
         ActiveRecord::Type.register(:jsonb, OID::Jsonb, adapter: :postgresql)
         ActiveRecord::Type.register(:money, OID::Money, adapter: :postgresql)
-        ActiveRecord::Type.register(:point, OID::Point, adapter: :postgresql)
+        ActiveRecord::Type.register(:point, OID::Rails51Point, adapter: :postgresql)
         ActiveRecord::Type.register(:legacy_point, OID::Point, adapter: :postgresql)
-        ActiveRecord::Type.register(:rails_5_1_point, OID::Rails51Point, adapter: :postgresql)
         ActiveRecord::Type.register(:uuid, OID::Uuid, adapter: :postgresql)
         ActiveRecord::Type.register(:vector, OID::Vector, adapter: :postgresql)
         ActiveRecord::Type.register(:xml, OID::Xml, adapter: :postgresql)

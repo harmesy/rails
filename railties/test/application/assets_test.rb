@@ -19,7 +19,7 @@ module ApplicationTests
     def precompile!(env = nil)
       with_env env.to_h do
         quietly do
-          precompile_task = "bin/rake assets:precompile --trace 2>&1"
+          precompile_task = "bin/rails assets:precompile --trace 2>&1"
           output = Dir.chdir(app_path) { %x[ #{precompile_task} ] }
           assert $?.success?, output
           output
@@ -36,7 +36,7 @@ module ApplicationTests
 
     def clean_assets!
       quietly do
-        assert Dir.chdir(app_path) { system('bin/rake assets:clobber') }
+        assert Dir.chdir(app_path) { system('bin/rails assets:clobber') }
       end
     end
 
@@ -174,7 +174,7 @@ module ApplicationTests
 
       precompile!
 
-      assert_file_exists("#{app_path}/public/assets/something-*.js")
+      assert_file_exists("#{app_path}/public/assets/something/index-*.js")
     end
 
     test 'precompile use assets defined in app env config' do
@@ -410,7 +410,7 @@ module ApplicationTests
 
       precompile!
 
-      assert_equal "Post\n;\n", File.read(Dir["#{app_path}/public/assets/application-*.js"].first)
+      assert_match(/Post;/, File.read(Dir["#{app_path}/public/assets/application-*.js"].first))
     end
 
     test "initialization on the assets group should set assets_dir" do
@@ -458,9 +458,9 @@ module ApplicationTests
       class ::PostsController < ActionController::Base; end
 
       get '/posts', {}, {'HTTPS'=>'off'}
-      assert_match('src="http://example.com/assets/application.debug.js', last_response.body)
+      assert_match('src="http://example.com/assets/application.self.js', last_response.body)
       get '/posts', {}, {'HTTPS'=>'on'}
-      assert_match('src="https://example.com/assets/application.debug.js', last_response.body)
+      assert_match('src="https://example.com/assets/application.self.js', last_response.body)
     end
 
     test "asset urls should be protocol-relative if no request is in scope" do

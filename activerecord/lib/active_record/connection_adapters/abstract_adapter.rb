@@ -1,5 +1,4 @@
 require 'active_record/type'
-require 'active_support/core_ext/benchmark'
 require 'active_record/connection_adapters/determine_if_preparable_visitor'
 require 'active_record/connection_adapters/schema_cache'
 require 'active_record/connection_adapters/sql_type_metadata'
@@ -23,6 +22,7 @@ module ActiveRecord
       autoload :TableDefinition
       autoload :Table
       autoload :AlterTable
+      autoload :ReferenceDefinition
     end
 
     autoload_at 'active_record/connection_adapters/abstract/connection_pool' do
@@ -95,14 +95,15 @@ module ActiveRecord
 
       attr_reader :prepared_statements
 
-      def initialize(connection, logger = nil, pool = nil) #:nodoc:
+      def initialize(connection, logger = nil, config = {}) # :nodoc:
         super()
 
         @connection          = connection
         @owner               = nil
         @instrumenter        = ActiveSupport::Notifications.instrumenter
         @logger              = logger
-        @pool                = pool
+        @config              = config
+        @pool                = nil
         @schema_cache        = SchemaCache.new self
         @visitor             = nil
         @prepared_statements = false
@@ -289,14 +290,14 @@ module ActiveRecord
       # locks
       #
       # Return true if we got the lock, otherwise false
-      def get_advisory_lock(key) # :nodoc:
+      def get_advisory_lock(lock_id) # :nodoc:
       end
 
       # This is meant to be implemented by the adapters that support advisory
       # locks.
       #
       # Return true if we released the lock, otherwise false
-      def release_advisory_lock(key) # :nodoc:
+      def release_advisory_lock(lock_id) # :nodoc:
       end
 
       # A list of extensions, to be filled in by adapters that support them.
@@ -307,12 +308,6 @@ module ActiveRecord
       # A list of index algorithms, to be filled by adapters that support them.
       def index_algorithms
         {}
-      end
-
-      # Returns a bind substitution value given a bind +column+
-      # NOTE: The column param is currently being used by the sqlserver-adapter
-      def substitute_at(column, _unused = 0)
-        Arel::Nodes::BindParam.new
       end
 
       # REFERENTIAL INTEGRITY ====================================
@@ -375,7 +370,7 @@ module ActiveRecord
       end
 
       # Provides access to the underlying database driver for this adapter. For
-      # example, this method returns a Mysql object in case of MysqlAdapter,
+      # example, this method returns a Mysql2::Client object in case of Mysql2Adapter,
       # and a PGconn object in case of PostgreSQLAdapter.
       #
       # This is useful for when you need to call a proprietary method such as
@@ -390,21 +385,19 @@ module ActiveRecord
       def release_savepoint(name = nil)
       end
 
-      def case_sensitive_modifier(node, table_attribute)
-        node
-      end
-
       def case_sensitive_comparison(table, attribute, column, value)
-        table_attr = table[attribute]
-        value = case_sensitive_modifier(value, table_attr) unless value.nil?
-        table_attr.eq(value)
+        if value.nil?
+          table[attribute].eq(value)
+        else
+          table[attribute].eq(Arel::Nodes::BindParam.new)
+        end
       end
 
       def case_insensitive_comparison(table, attribute, column, value)
         if can_perform_case_insensitive_comparison_for?(column)
-          table[attribute].lower.eq(table.lower(value))
+          table[attribute].lower.eq(table.lower(Arel::Nodes::BindParam.new))
         else
-          case_sensitive_comparison(table, attribute, column, value)
+          table[attribute].eq(Arel::Nodes::BindParam.new)
         end
       end
 

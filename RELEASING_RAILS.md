@@ -19,13 +19,13 @@ http://travis-ci.org/rails/rails
 
 ### Is Sam Ruby happy?  If not, make him happy.
 
-Sam Ruby keeps a test suite that makes sure the code samples in his book (Agile
-Web Development with Rails) all work.  These are valuable integration tests
-for Rails.  You can check the status of his tests here:
+Sam Ruby keeps a [test suite](https://github.com/rubys/awdwr) that makes
+sure the code samples in his book 
+([Agile Web Development with Rails](https://pragprog.com/titles/rails4/agile-web-development-with-rails-4th-edition))
+all work.  These are valuable system tests
+for Rails.  You can check the status of these tests here:
 
-```
-http://intertwingly.net/projects/dashboard.html
-```
+[http://intertwingly.net/projects/dashboard.html](http://intertwingly.net/projects/dashboard.html)
 
 Do not release with Red AWDwR tests.
 
@@ -36,7 +36,7 @@ Obviously Rails cannot be released when it depends on unreleased code.
 Contact the authors of those particular gems and work out a release date that
 suits them.
 
-### Contact the security team (either Koz or tenderlove)
+### Contact the security team (either tenderlove or rafaelfranca)
 
 Let them know of your plans to release.  There may be security issues to be
 addressed, and that can impact your release date.

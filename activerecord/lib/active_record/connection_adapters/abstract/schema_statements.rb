@@ -82,18 +82,19 @@ module ActiveRecord
       #
       def index_exists?(table_name, column_name, options = {})
         column_names = Array(column_name).map(&:to_s)
-        index_name = options.key?(:name) ? options[:name].to_s : index_name(table_name, column: column_names)
         checks = []
-        checks << lambda { |i| i.name == index_name }
         checks << lambda { |i| i.columns == column_names }
         checks << lambda { |i| i.unique } if options[:unique]
+        checks << lambda { |i| i.name == options[:name].to_s } if options[:name]
 
         indexes(table_name).any? { |i| checks.all? { |check| check[i] } }
       end
 
       # Returns an array of Column objects for the table specified by +table_name+.
       # See the concrete implementation for details on the expected parameter values.
-      def columns(table_name) end
+      def columns(table_name)
+        raise NotImplementedError, "#columns is not implemented"
+      end
 
       # Checks to see if a column exists in a given table.
       #
@@ -111,18 +112,25 @@ module ActiveRecord
       #
       def column_exists?(table_name, column_name, type = nil, options = {})
         column_name = column_name.to_s
-        columns(table_name).any?{ |c| c.name == column_name &&
-                                      (!type                     || c.type == type) &&
-                                      (!options.key?(:limit)     || c.limit == options[:limit]) &&
-                                      (!options.key?(:precision) || c.precision == options[:precision]) &&
-                                      (!options.key?(:scale)     || c.scale == options[:scale]) &&
-                                      (!options.key?(:default)   || c.default == options[:default]) &&
-                                      (!options.key?(:null)      || c.null == options[:null]) }
+        checks = []
+        checks << lambda { |c| c.name == column_name }
+        checks << lambda { |c| c.type == type } if type
+        (migration_keys - [:name]).each do |attr|
+          checks << lambda { |c| c.send(attr) == options[attr] } if options.key?(attr)
+        end
+
+        columns(table_name).any? { |c| checks.all? { |check| check[c] } }
       end
 
       # Returns just a table's primary key
       def primary_key(table_name)
         pks = primary_keys(table_name)
+        warn <<-WARNING.strip_heredoc if pks.count > 1
+          WARNING: Rails does not support composite primary key.
+
+          #{table_name} has composite primary key. Composite primary key is ignored.
+        WARNING
+
         pks.first if pks.one?
       end
 
@@ -451,7 +459,7 @@ module ActiveRecord
       # The +type+ parameter is normally one of the migrations native types,
       # which is one of the following:
       # <tt>:primary_key</tt>, <tt>:string</tt>, <tt>:text</tt>,
-      # <tt>:integer</tt>, <tt>:bigint</tt>, <tt>:float</tt>, <tt>:decimal</tt>,
+      # <tt>:integer</tt>, <tt>:bigint</tt>, <tt>:float</tt>, <tt>:decimal</tt>, <tt>:numeric</tt>,
       # <tt>:datetime</tt>, <tt>:time</tt>, <tt>:date</tt>,
       # <tt>:binary</tt>, <tt>:boolean</tt>.
       #
@@ -469,9 +477,9 @@ module ActiveRecord
       #   Allows or disallows +NULL+ values in the column. This option could
       #   have been named <tt>:null_allowed</tt>.
       # * <tt>:precision</tt> -
-      #   Specifies the precision for a <tt>:decimal</tt> column.
+      #   Specifies the precision for the <tt>:decimal</tt> and <tt>:numeric</tt> columns.
       # * <tt>:scale</tt> -
-      #   Specifies the scale for a <tt>:decimal</tt> column.
+      #   Specifies the scale for the <tt>:decimal</tt> and <tt>:numeric</tt> columns.
       #
       # Note: The precision is the total number of significant digits
       # and the scale is the number of digits that can be stored following
@@ -488,8 +496,6 @@ module ActiveRecord
       #   Default is (10,0).
       # * PostgreSQL: <tt>:precision</tt> [1..infinity],
       #   <tt>:scale</tt> [0..infinity]. No default.
-      # * SQLite2: Any <tt>:precision</tt> and <tt>:scale</tt> may be used.
-      #   Internal storage as strings. No default.
       # * SQLite3: No restrictions on <tt>:precision</tt> and <tt>:scale</tt>,
       #   but the maximum supported <tt>:precision</tt> is 16. No default.
       # * Oracle: <tt>:precision</tt> [1..38], <tt>:scale</tt> [-84..127].
@@ -692,7 +698,7 @@ module ActiveRecord
       #
       #   CREATE FULLTEXT INDEX index_developers_on_name ON developers (name) -- MySQL
       #
-      # Note: only supported by MySQL. Supported: <tt>:fulltext</tt> and <tt>:spatial</tt> on MyISAM tables.
+      # Note: only supported by MySQL.
       def add_index(table_name, column_name, options = {})
         index_name, index_type, index_columns, index_options = add_index_options(table_name, column_name, options)
         execute "CREATE #{index_type} INDEX #{quote_column_name(index_name)} ON #{quote_table_name(table_name)} (#{index_columns})#{index_options}"
@@ -700,15 +706,15 @@ module ActiveRecord
 
       # Removes the given index from the table.
       #
-      # Removes the +index_accounts_on_column+ in the +accounts+ table.
+      # Removes the index on +branch_id+ in the +accounts+ table if exactly one such index exists.
       #
       #   remove_index :accounts, :branch_id
       #
-      # Removes the index named +index_accounts_on_branch_id+ in the +accounts+ table.
+      # Removes the index on +branch_id+ in the +accounts+ table if exactly one such index exists.
       #
       #   remove_index :accounts, column: :branch_id
       #
-      # Removes the index named +index_accounts_on_branch_id_and_party_id+ in the +accounts+ table.
+      # Removes the index on +branch_id+ and +party_id+ in the +accounts+ table if exactly one such index exists.
       #
       #   remove_index :accounts, column: [:branch_id, :party_id]
       #
@@ -958,15 +964,23 @@ module ActiveRecord
       def dump_schema_information #:nodoc:
         sm_table = ActiveRecord::Migrator.schema_migrations_table_name
 
-        ActiveRecord::SchemaMigration.order('version').map { |sm|
-          "INSERT INTO #{sm_table} (version) VALUES ('#{sm.version}');"
-        }.join "\n\n"
+        sql = "INSERT INTO #{sm_table} (version) VALUES "
+        sql << ActiveRecord::SchemaMigration.order('version').pluck(:version).map {|v| "('#{v}')" }.join(', ')
+        sql << ";\n\n"
       end
 
       # Should not be called normally, but this operation is non-destructive.
       # The migrations module handles this automatically.
       def initialize_schema_migrations_table
         ActiveRecord::SchemaMigration.create_table
+      end
+
+      def initialize_internal_metadata_table
+        ActiveRecord::InternalMetadata.create_table
+      end
+
+      def internal_string_options_for_primary_key # :nodoc:
+        { primary_key: true }
       end
 
       def assume_migrated_upto_version(version, migrations_paths)
@@ -984,14 +998,12 @@ module ActiveRecord
           execute "INSERT INTO #{sm_table} (version) VALUES ('#{version}')"
         end
 
-        inserted = Set.new
-        (versions - migrated).each do |v|
-          if inserted.include?(v)
-            raise "Duplicate migration #{v}. Please renumber your migrations to resolve the conflict."
-          elsif v < version
-            execute "INSERT INTO #{sm_table} (version) VALUES ('#{v}')"
-            inserted << v
+        inserting = (versions - migrated).select {|v| v < version}
+        if inserting.any?
+          if (duplicate = inserting.detect {|v| inserting.count(v) > 1})
+            raise "Duplicate migration #{duplicate}. Please renumber your migrations to resolve the conflict."
           end
+          execute "INSERT INTO #{sm_table} (version) VALUES #{inserting.map {|v| "('#{v}')"}.join(', ') }"
         end
       end
 
@@ -1029,11 +1041,12 @@ module ActiveRecord
       end
 
       # Given a set of columns and an ORDER BY clause, returns the columns for a SELECT DISTINCT.
-      # Both PostgreSQL and Oracle overrides this for custom DISTINCT syntax - they
+      # PostgreSQL, MySQL, and Oracle overrides this for custom DISTINCT syntax - they
       # require the order columns appear in the SELECT.
       #
       #   columns_for_distinct("posts.id", ["posts.created_at desc"])
-      def columns_for_distinct(columns, orders) #:nodoc:
+      #
+      def columns_for_distinct(columns, orders) # :nodoc:
         columns
       end
 
@@ -1127,21 +1140,35 @@ module ActiveRecord
         end
 
         def index_name_for_remove(table_name, options = {})
-          index_name = index_name(table_name, options)
+          # if the adapter doesn't support the indexes call the best we can do
+          # is return the default index name for the options provided
+          return index_name(table_name, options) unless respond_to?(:indexes)
 
-          unless index_name_exists?(table_name, index_name, true)
-            if options.is_a?(Hash) && options.has_key?(:name)
-              options_without_column = options.dup
-              options_without_column.delete :column
-              index_name_without_column = index_name(table_name, options_without_column)
+          checks = []
 
-              return index_name_without_column if index_name_exists?(table_name, index_name_without_column, false)
-            end
-
-            raise ArgumentError, "Index name '#{index_name}' on table '#{table_name}' does not exist"
+          if options.is_a?(Hash)
+            checks << lambda { |i| i.name == options[:name].to_s } if options.has_key?(:name)
+            column_names = Array(options[:column]).map(&:to_s)
+          else
+            column_names = Array(options).map(&:to_s)
           end
 
-          index_name
+          if column_names.any?
+            checks << lambda { |i| i.columns.join('_and_') == column_names.join('_and_') }
+          end
+
+          raise ArgumentError "No name or columns specified" if checks.none?
+
+          matching_indexes = indexes(table_name).select { |i| checks.all? { |check| check[i] } }
+
+          if matching_indexes.count > 1
+            raise ArgumentError, "Multiple indexes found on #{table_name} columns #{column_names}. " \
+                                 "Specify an index name from #{matching_indexes.map(&:name).join(', ')}"
+          elsif matching_indexes.none?
+            raise ArgumentError, "No indexes found on #{table_name} with the options provided."
+          else
+            matching_indexes.first.name
+          end
         end
 
         def rename_table_indexes(table_name, new_name)
@@ -1168,7 +1195,7 @@ module ActiveRecord
 
       private
       def create_table_definition(name, temporary = false, options = nil, as = nil)
-        TableDefinition.new native_database_types, name, temporary, options, as
+        TableDefinition.new(name, temporary, options, as)
       end
 
       def create_alter_table(name)

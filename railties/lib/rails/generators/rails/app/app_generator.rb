@@ -57,8 +57,7 @@ module Rails
       directory 'app'
 
       keep_file  'app/assets/images'
-      keep_file  'app/mailers'
-      keep_file  'app/models'
+      empty_directory_with_keep_file 'app/assets/javascripts/channels' unless options[:skip_action_cable]
 
       keep_file  'app/controllers/concerns'
       keep_file  'app/models/concerns'
@@ -79,6 +78,8 @@ module Rails
         template "application.rb"
         template "environment.rb"
         template "secrets.yml"
+        template "cable.yml" unless options[:skip_action_cable]
+        template "puma.rb"   unless options[:skip_puma]
 
         directory "environments"
         directory "initializers"
@@ -90,6 +91,7 @@ module Rails
       cookie_serializer_config_exist = File.exist?('config/initializers/cookies_serializer.rb')
       callback_terminator_config_exist = File.exist?('config/initializers/callback_terminator.rb')
       active_record_belongs_to_required_by_default_config_exist = File.exist?('config/initializers/active_record_belongs_to_required_by_default.rb')
+      action_cable_config_exist = File.exist?('config/cable.yml')
 
       config
 
@@ -103,6 +105,10 @@ module Rails
 
       unless active_record_belongs_to_required_by_default_config_exist
         remove_file 'config/initializers/active_record_belongs_to_required_by_default.rb'
+      end
+
+      unless action_cable_config_exist
+        template 'config/cable.yml'
       end
     end
 
@@ -275,9 +281,9 @@ module Rails
         end
       end
 
-      def delete_app_views_if_api_option
+      def delete_application_layout_file_if_api_option
         if options[:api]
-          remove_dir 'app/views'
+          remove_file 'app/views/layouts/application.html.erb'
         end
       end
 
@@ -293,9 +299,31 @@ module Rails
         end
       end
 
+      def delete_application_record_skipping_active_record
+        if options[:skip_active_record]
+          remove_file 'app/models/application_record.rb'
+        end
+      end
+
+      def delete_action_mailer_files_skipping_action_mailer
+        if options[:skip_action_mailer]
+          remove_file 'app/mailers/application_mailer.rb'
+          remove_file 'app/views/layouts/mailer.html.erb'
+          remove_file 'app/views/layouts/mailer.text.erb'
+        end
+      end
+
       def delete_active_record_initializers_skipping_active_record
         if options[:skip_active_record]
           remove_file 'config/initializers/active_record_belongs_to_required_by_default.rb'
+        end
+      end
+
+      def delete_action_cable_files_skipping_action_cable
+        if options[:skip_action_cable]
+          remove_file 'config/cable.yml'
+          remove_file 'app/assets/javascripts/cable.coffee'
+          remove_dir 'app/channels'
         end
       end
 
@@ -303,6 +331,14 @@ module Rails
         if options[:api]
           remove_file 'config/initializers/session_store.rb'
           remove_file 'config/initializers/cookies_serializer.rb'
+          remove_file 'config/initializers/request_forgery_protection.rb'
+          remove_file 'config/initializers/per_form_csrf_tokens.rb'
+        end
+      end
+
+      def delete_api_initializers
+        unless options[:api]
+          remove_file 'config/initializers/cors.rb'
         end
       end
 

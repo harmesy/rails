@@ -13,34 +13,11 @@ class FixtureTemplate
   end
 end
 
-class FixtureFinder
+class FixtureFinder < ActionView::LookupContext
   FIXTURES_DIR = "#{File.dirname(__FILE__)}/../fixtures/digestor"
 
-  attr_reader   :details, :view_paths
-  attr_accessor :formats
-  attr_accessor :variants
-
-  def initialize
-    @details  = {}
-    @view_paths = ActionView::PathSet.new(['digestor'])
-    @formats  = []
-    @variants = []
-  end
-
-  def details_key
-    details.hash
-  end
-
-  def find(name, prefixes = [], partial = false, keys = [], options = {})
-    partial_name = partial ? name.gsub(%r|/([^/]+)$|, '/_\1') : name
-    format = @formats.first.to_s
-    format += "+#{@variants.first}" if @variants.any?
-
-    FixtureTemplate.new("digestor/#{partial_name}.#{format}.erb")
-  end
-
-  def disable_cache(&block)
-    yield
+  def initialize(details = {})
+    super(ActionView::PathSet.new(['digestor']), details, [])
   end
 end
 
@@ -56,7 +33,6 @@ class TemplateDigestorTest < ActionView::TestCase
   def teardown
     Dir.chdir @cwd
     FileUtils.rm_r @tmp_dir
-    ActionView::Digestor.cache.clear
   end
 
   def test_top_level_change_reflected
@@ -153,6 +129,16 @@ class TemplateDigestorTest < ActionView::TestCase
     end
   end
 
+  def test_getting_of_singly_nested_dependencies
+    singly_nested_dependencies = ["messages/header", "messages/form", "messages/message", "events/event", "comments/comment"]
+    assert_equal singly_nested_dependencies, nested_dependencies('messages/edit')
+  end
+
+  def test_getting_of_doubly_nested_dependencies
+    doubly_nested = [{"comments/comments"=>["comments/comment"]}, "messages/message"]
+    assert_equal doubly_nested, nested_dependencies('messages/peek')
+  end
+
   def test_nested_template_directory
     assert_digest_difference("messages/show") do
       change_template("messages/actions/_move")
@@ -206,13 +192,14 @@ class TemplateDigestorTest < ActionView::TestCase
 
   def test_details_are_included_in_cache_key
     # Cache the template digest.
+    @finder = FixtureFinder.new({:formats => [:html]})
     old_digest = digest("events/_event")
 
     # Change the template; the cached digest remains unchanged.
     change_template("events/_event")
 
     # The details are changed, so a new cache key is generated.
-    finder.details[:foo] = "bar"
+    @finder = FixtureFinder.new
 
     # The cache is busted.
     assert_not_equal old_digest, digest("events/_event")
@@ -313,29 +300,28 @@ class TemplateDigestorTest < ActionView::TestCase
 
     def assert_digest_difference(template_name, options = {})
       previous_digest = digest(template_name, options)
-      ActionView::Digestor.cache.clear
+      finder.digest_cache.clear
 
       yield
 
-      assert previous_digest != digest(template_name, options), "digest didn't change"
-      ActionView::Digestor.cache.clear
+      assert_not_equal previous_digest, digest(template_name, options), "digest didn't change"
+      finder.digest_cache.clear
     end
 
     def digest(template_name, options = {})
       options = options.dup
 
-      finder.formats  = [:html]
       finder.variants = options.delete(:variants) || []
 
       ActionView::Digestor.digest({ name: template_name, finder: finder }.merge(options))
     end
 
     def dependencies(template_name)
-      ActionView::Digestor.new({ name: template_name, finder: finder }).dependencies
+      ActionView::Digestor.new(template_name, finder).dependencies
     end
 
     def nested_dependencies(template_name)
-      ActionView::Digestor.new({ name: template_name, finder: finder }).nested_dependencies
+      ActionView::Digestor.new(template_name, finder).nested_dependencies
     end
 
     def finder

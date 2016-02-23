@@ -1,4 +1,4 @@
-FRAMEWORKS = %w( activesupport activemodel activerecord actionview actionpack activejob actionmailer railties )
+FRAMEWORKS = %w( activesupport activemodel activerecord actionview actionpack activejob actionmailer actioncable railties )
 
 root    = File.expand_path('../../', __FILE__)
 version = File.read("#{root}/RAILS_VERSION").strip
@@ -13,6 +13,7 @@ directory "pkg"
 
     task :clean do
       rm_f gem
+      sh "cd #{framework} && bundle exec rake package:clean" unless framework == "rails"
     end
 
     task :update_versions do
@@ -27,7 +28,7 @@ directory "pkg"
       file = Dir[glob].first
       ruby = File.read(file)
 
-      major, minor, tiny, pre = version.split('.')
+      major, minor, tiny, pre = version.split('.', 4)
       pre = pre ? pre.inspect : "nil"
 
       ruby.gsub!(/^(\s*)MAJOR(\s*)= .*?$/, "\\1MAJOR = #{major}")
@@ -48,6 +49,7 @@ directory "pkg"
     task gem => %w(update_versions pkg) do
       cmd = ""
       cmd << "cd #{framework} && " unless framework == "rails"
+      cmd << "bundle exec rake package && " unless framework == "rails"
       cmd << "gem build #{gemspec} && mv #{framework}-#{version}.gem #{root}/pkg/"
       sh cmd
     end
@@ -56,8 +58,6 @@ directory "pkg"
     task :install => :build do
       sh "gem install #{gem}"
     end
-
-    task :prep_release => [:ensure_clean_state, :build]
 
     task :push => :build do
       sh "gem push #{gem}"
@@ -138,6 +138,8 @@ namespace :all do
     sh "git tag -m '#{tag} release' #{tag}"
     sh "git push --tags"
   end
+
+  task :prep_release => %w(ensure_clean_state build)
 
   task :release => %w(ensure_clean_state build bundle commit tag push)
 end

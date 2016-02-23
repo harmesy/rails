@@ -238,7 +238,7 @@ TIP: This is useful when you're rendering a small snippet of HTML code.
 However, you might want to consider moving it to a template file if the markup
 is complex.
 
-NOTE: This option will escape HTML entities if the string is not HTML safe.
+NOTE: When using `html:` option, HTML entities will be escaped if the string is not marked as HTML safe by using `html_safe` method.  
 
 #### Rendering JSON
 
@@ -555,7 +555,7 @@ class Admin::ProductsController < AdminController
 end
 ```
 
-The lookup order for a `admin/products#index` action will be:
+The lookup order for an `admin/products#index` action will be:
 
 * `app/views/admin/products/`
 * `app/views/admin/`
@@ -622,10 +622,13 @@ Another way to handle returning responses to an HTTP request is with `redirect_t
 redirect_to photos_url
 ```
 
-You can use `redirect_to` with any arguments that you could use with `link_to` or `url_for`. There's also a special redirect that sends the user back to the page they just came from:
+You can use `redirect_back` to return the user to the page they just came from.
+This location is pulled from the `HTTP_REFERER` header which is not guaranteed
+to be set by the browser, so you must provide the `fallback_location`
+to use in this case.
 
 ```ruby
-redirect_to :back
+redirect_back(fallback_location: root_path)
 ```
 
 #### Getting a Different Redirect Status Code
@@ -697,7 +700,7 @@ This would detect that there are no books with the specified ID, populate the `@
 
 ### Using `head` To Build Header-Only Responses
 
-The `head` method can be used to send responses with only headers to the browser. It provides a more obvious alternative to calling `render :nothing`. The `head` method accepts a number or symbol (see [reference table](#the-status-option)) representing a HTTP status code. The options argument is interpreted as a hash of header names and values. For example, you can return only an error header:
+The `head` method can be used to send responses with only headers to the browser. The `head` method accepts a number or symbol (see [reference table](#the-status-option)) representing a HTTP status code. The options argument is interpreted as a hash of header names and values. For example, you can return only an error header:
 
 ```ruby
 head :bad_request
@@ -1154,14 +1157,12 @@ To pass a local variable to a partial in only specific cases use the `local_assi
 * `_articles.html.erb`
 
   ```erb
-  <%= content_tag_for :article, article do |article| %>
-    <h2><%= article.title %></h2>
+  <h2><%= article.title %></h2>
 
-    <% if local_assigns[:full] %>
-      <%= simple_format article.body %>
-    <% else %>
-      <%= truncate article.body %>
-    <% end %>
+  <% if local_assigns[:full] %>
+    <%= simple_format article.body %>
+  <% else %>
+    <%= truncate article.body %>
   <% end %>
   ```
 

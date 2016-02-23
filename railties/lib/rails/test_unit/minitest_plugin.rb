@@ -1,28 +1,27 @@
 require "active_support/core_ext/module/attribute_accessors"
 require "rails/test_unit/reporter"
 require "rails/test_unit/test_requirer"
+require 'shellwords'
 
 module Minitest
-  mattr_accessor(:hide_aggregated_results) { false }
-
-  module AggregatedResultSuppresion
+  class SuppressedSummaryReporter < SummaryReporter
+    # Disable extra failure output after a run if output is inline.
     def aggregated_results
-      super unless Minitest.hide_aggregated_results
+      super unless options[:output_inline]
     end
   end
 
-  SummaryReporter.prepend AggregatedResultSuppresion
-
   def self.plugin_rails_options(opts, options)
+    executable = ::Rails::TestUnitReporter.executable
     opts.separator ""
-    opts.separator "Usage: bin/rails test [options] [files or directories]"
+    opts.separator "Usage: #{executable} [options] [files or directories]"
     opts.separator "You can run a single test by appending a line number to a filename:"
     opts.separator ""
-    opts.separator "    bin/rails test test/models/user_test.rb:27"
+    opts.separator "    #{executable} test/models/user_test.rb:27"
     opts.separator ""
     opts.separator "You can run multiple files and directories at the same time:"
     opts.separator ""
-    opts.separator "    bin/rails test test/controllers test/integration/login_test.rb"
+    opts.separator "    #{executable} test/controllers test/integration/login_test.rb"
     opts.separator ""
     opts.separator "By default test failures and errors are reported inline during a run."
     opts.separator ""
@@ -44,10 +43,16 @@ module Minitest
     end
 
     opts.on("-f", "--fail-fast",
-            "Abort test run on first failure") do
+            "Abort test run on first failure or error") do
       options[:fail_fast] = true
     end
 
+    opts.on("-c", "--[no-]color",
+            "Enable color in the output") do |value|
+      options[:color] = value
+    end
+
+    options[:color] = true
     options[:output_inline] = true
     options[:patterns] = opts.order!
   end
@@ -56,9 +61,13 @@ module Minitest
   # as the patterns would also contain the other Rake tasks.
   def self.rake_run(patterns) # :nodoc:
     @rake_patterns = patterns
-    run
+    passed = run(Shellwords.split(ENV['TESTOPTS'] || ''))
+    exit passed unless passed
+    passed
   end
 
+  # Owes great inspiration to test runner trailblazers like RSpec,
+  # minitest-reporters, maxitest and others.
   def self.plugin_rails_init(options)
     self.run_with_rails_extension = true
 
@@ -74,9 +83,9 @@ module Minitest
       Minitest.backtrace_filter = ::Rails.backtrace_cleaner if ::Rails.respond_to?(:backtrace_cleaner)
     end
 
-    # Disable the extra failure output after a run, unless output is deferred.
-    self.hide_aggregated_results = options[:output_inline]
-
+    # Replace progress reporter for colors.
+    self.reporter.reporters.delete_if { |reporter| reporter.kind_of?(SummaryReporter) || reporter.kind_of?(ProgressReporter) }
+    self.reporter << SuppressedSummaryReporter.new(options[:io], options)
     self.reporter << ::Rails::TestUnitReporter.new(options[:io], options)
   end
 

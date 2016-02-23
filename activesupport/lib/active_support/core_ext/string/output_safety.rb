@@ -5,7 +5,6 @@ class ERB
   module Util
     HTML_ESCAPE = { '&' => '&amp;',  '>' => '&gt;',   '<' => '&lt;', '"' => '&quot;', "'" => '&#39;' }
     JSON_ESCAPE = { '&' => '\u0026', '>' => '\u003e', '<' => '\u003c', "\u2028" => '\u2028', "\u2029" => '\u2029' }
-    HTML_ESCAPE_REGEXP = /[&"'><]/
     HTML_ESCAPE_ONCE_REGEXP = /["><']|&(?!([a-zA-Z]+|(#\d+)|(#[xX][\dA-Fa-f]+));)/
     JSON_ESCAPE_REGEXP = /[\u2028\u2029&><]/u
 
@@ -37,7 +36,7 @@ class ERB
       if s.html_safe?
         s
       else
-        ActiveSupport::Multibyte::Unicode.tidy_bytes(s).gsub(HTML_ESCAPE_REGEXP, HTML_ESCAPE)
+        CGI.escapeHTML(ActiveSupport::Multibyte::Unicode.tidy_bytes(s))
       end
     end
     module_function :unwrapped_html_escape
@@ -142,6 +141,7 @@ module ActiveSupport #:nodoc:
     alias_method :original_concat, :concat
     private :original_concat
 
+    # Raised when <tt>ActiveSupport::SafeBuffer#safe_concat</tt> is called on unsafe buffers.
     class SafeConcatError < StandardError
       def initialize
         super 'Could not concatenate to the buffer because it is not html safe.'
@@ -171,7 +171,7 @@ module ActiveSupport #:nodoc:
       original_concat(value)
     end
 
-    def initialize(*)
+    def initialize(str = '')
       @html_safe = true
       super
     end
@@ -243,8 +243,7 @@ module ActiveSupport #:nodoc:
     private
 
     def html_escape_interpolated_argument(arg)
-      (!html_safe? || arg.html_safe?) ? arg :
-        arg.to_s.gsub(ERB::Util::HTML_ESCAPE_REGEXP, ERB::Util::HTML_ESCAPE)
+      (!html_safe? || arg.html_safe?) ? arg : CGI.escapeHTML(arg.to_s)
     end
   end
 end

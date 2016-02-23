@@ -130,27 +130,25 @@ class PrimaryKeysTest < ActiveRecord::TestCase
   end
 
   def test_supports_primary_key
-    assert_nothing_raised NoMethodError do
+    assert_nothing_raised do
       ActiveRecord::Base.connection.supports_primary_key?
     end
   end
 
-  def test_primary_key_returns_value_if_it_exists
-    klass = Class.new(ActiveRecord::Base) do
-      self.table_name = 'developers'
-    end
+  if ActiveRecord::Base.connection.supports_primary_key?
+    def test_primary_key_returns_value_if_it_exists
+      klass = Class.new(ActiveRecord::Base) do
+        self.table_name = 'developers'
+      end
 
-    if ActiveRecord::Base.connection.supports_primary_key?
       assert_equal 'id', klass.primary_key
     end
-  end
 
-  def test_primary_key_returns_nil_if_it_does_not_exist
-    klass = Class.new(ActiveRecord::Base) do
-      self.table_name = 'developers_projects'
-    end
+    def test_primary_key_returns_nil_if_it_does_not_exist
+      klass = Class.new(ActiveRecord::Base) do
+        self.table_name = 'developers_projects'
+      end
 
-    if ActiveRecord::Base.connection.supports_primary_key?
       assert_nil klass.primary_key
     end
   end
@@ -262,13 +260,20 @@ class CompositePrimaryKeyTest < ActiveRecord::TestCase
     assert_equal ["region", "code"], @connection.primary_keys("barcodes")
   end
 
+  def test_primary_key_issues_warning
+    warning = capture(:stderr) do
+      assert_nil @connection.primary_key("barcodes")
+    end
+    assert_match(/WARNING: Rails does not support composite primary key\./, warning)
+  end
+
   def test_collectly_dump_composite_primary_key
     schema = dump_table_schema "barcodes"
     assert_match %r{create_table "barcodes", primary_key: \["region", "code"\]}, schema
   end
 end
 
-if current_adapter?(:MysqlAdapter, :Mysql2Adapter)
+if current_adapter?(:Mysql2Adapter)
   class PrimaryKeyWithAnsiQuotesTest < ActiveRecord::TestCase
     self.use_transactional_tests = false
 
@@ -308,7 +313,7 @@ if current_adapter?(:MysqlAdapter, :Mysql2Adapter)
   end
 end
 
-if current_adapter?(:PostgreSQLAdapter, :MysqlAdapter, :Mysql2Adapter)
+if current_adapter?(:PostgreSQLAdapter, :Mysql2Adapter)
   class PrimaryKeyBigSerialTest < ActiveRecord::TestCase
     include SchemaDumpingHelper
 
@@ -351,7 +356,7 @@ if current_adapter?(:PostgreSQLAdapter, :MysqlAdapter, :Mysql2Adapter)
       end
     end
 
-    if current_adapter?(:MysqlAdapter, :Mysql2Adapter)
+    if current_adapter?(:Mysql2Adapter)
       test "primary key column type with options" do
         @connection.create_table(:widgets, id: :primary_key, limit: 8, unsigned: true, force: true)
         column = @connection.columns(:widgets).find { |c| c.name == 'id' }

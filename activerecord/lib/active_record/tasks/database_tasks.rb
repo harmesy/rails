@@ -42,6 +42,22 @@ module ActiveRecord
 
       LOCAL_HOSTS    = ['127.0.0.1', 'localhost']
 
+      def check_protected_environments!
+        unless ENV['DISABLE_DATABASE_ENVIRONMENT_CHECK']
+          current = ActiveRecord::Migrator.current_environment
+          stored  = ActiveRecord::Migrator.last_stored_environment
+
+          if ActiveRecord::Migrator.protected_environment?
+            raise ActiveRecord::ProtectedEnvironmentError.new(stored)
+          end
+
+          if stored && stored != current
+            raise ActiveRecord::EnvironmentMismatchError.new(current: current, stored: stored)
+          end
+        end
+      rescue ActiveRecord::NoDatabaseError
+      end
+
       def register_task(pattern, task)
         @tasks ||= {}
         @tasks[pattern] = task
@@ -100,7 +116,11 @@ module ActiveRecord
       end
 
       def create_all
+        old_pool = ActiveRecord::Base.connection_handler.retrieve_connection_pool(ActiveRecord::Base)
         each_local_configuration { |configuration| create configuration }
+        if old_pool
+          ActiveRecord::Base.connection_handler.establish_connection(ActiveRecord::Base, old_pool.spec)
+        end
       end
 
       def create_current(environment = env)
@@ -204,6 +224,8 @@ module ActiveRecord
         else
           raise ArgumentError, "unknown format #{format.inspect}"
         end
+        ActiveRecord::InternalMetadata.create_table
+        ActiveRecord::InternalMetadata[:environment] = ActiveRecord::Migrator.current_environment
       end
 
       def load_schema_for(*args)
@@ -232,7 +254,7 @@ module ActiveRecord
 
       def check_schema_file(filename)
         unless File.exist?(filename)
-          message = %{#{filename} doesn't exist yet. Run `rake db:migrate` to create it, then try again.}
+          message = %{#{filename} doesn't exist yet. Run `rails db:migrate` to create it, then try again.}
           message << %{ If you do not intend to use a database, you should instead alter #{Rails.root}/config/application.rb to limit the frameworks that will be loaded.} if defined?(::Rails)
           Kernel.abort message
         end

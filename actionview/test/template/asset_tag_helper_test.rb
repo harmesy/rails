@@ -27,6 +27,8 @@ class AssetTagHelperTest < ActionView::TestCase
   end
 
   AssetPathToTag = {
+    %(asset_path(""))             => %(),
+    %(asset_path("   "))          => %(),
     %(asset_path("foo"))          => %(/foo),
     %(asset_path("style.css"))    => %(/style.css),
     %(asset_path("xmlhr.js"))     => %(/xmlhr.js),
@@ -193,7 +195,8 @@ class AssetTagHelperTest < ActionView::TestCase
     %(image_tag("//www.rubyonrails.com/images/rails.png")) => %(<img alt="Rails" src="//www.rubyonrails.com/images/rails.png" />),
     %(image_tag("mouse.png", :alt => nil)) => %(<img src="/images/mouse.png" />),
     %(image_tag("data:image/gif;base64,R0lGODlhAQABAID/AMDAwAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==", :alt => nil)) => %(<img src="data:image/gif;base64,R0lGODlhAQABAID/AMDAwAAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" />),
-    %(image_tag("")) => %(<img src="" />)
+    %(image_tag("")) => %(<img src="" />),
+    %(image_tag("gold.png", data: { title: 'Rails Application' })) => %(<img data-title="Rails Application" src="/images/gold.png" alt="Gold" />)
   }
 
   FaviconLinkToTag = {
@@ -456,6 +459,7 @@ class AssetTagHelperTest < ActionView::TestCase
     [nil, '/', '/foo/bar/', 'foo/bar/'].each do |prefix|
       assert_equal 'Rails', image_alt("#{prefix}rails.png")
       assert_equal 'Rails', image_alt("#{prefix}rails-9c0a079bdd7701d7e729bd956823d153.png")
+      assert_equal 'Rails', image_alt("#{prefix}rails-f56ef62bc41b040664e801a38f068082a75d506d9048307e8096737463503d0b.png")
       assert_equal 'Long file name with hyphens', image_alt("#{prefix}long-file-name-with-hyphens.png")
       assert_equal 'Long file name with underscores', image_alt("#{prefix}long_file_name_with_underscores.png")
     end

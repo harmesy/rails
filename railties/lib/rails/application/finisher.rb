@@ -22,10 +22,10 @@ module Rails
       initializer :add_builtin_route do |app|
         if Rails.env.development?
           app.routes.append do
-            get '/rails/info/properties' => "rails/info#properties"
-            get '/rails/info/routes'     => "rails/info#routes"
-            get '/rails/info'            => "rails/info#index"
-            get '/'                      => "rails/welcome#index"
+            get '/rails/info/properties' => "rails/info#properties", internal: true
+            get '/rails/info/routes'     => "rails/info#routes", internal: true
+            get '/rails/info'            => "rails/info#index", internal: true
+            get '/'                      => "rails/welcome#index", internal: true
           end
         end
       end
@@ -86,7 +86,7 @@ module Rails
       # added in the hook are taken into account.
       initializer :set_clear_dependencies_hook, group: :all do
         callback = lambda do
-          ActiveSupport::Dependencies.interlock.attempt_unloading do
+          ActiveSupport::Dependencies.interlock.unloading do
             ActiveSupport::DescendantsTracker.clear
             ActiveSupport::Dependencies.clear
           end

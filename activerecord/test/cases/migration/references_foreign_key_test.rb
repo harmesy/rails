@@ -32,10 +32,10 @@ module ActiveRecord
         assert_equal [], @connection.foreign_keys("testings")
       end
 
-      test "foreign keys can be created in one query" do
+      test "foreign keys can be created in one query when index is not added" do
         assert_queries(1) do
           @connection.create_table :testings do |t|
-            t.references :testing_parent, foreign_key: true
+            t.references :testing_parent, foreign_key: true, index: false
           end
         end
       end
@@ -143,6 +143,22 @@ module ActiveRecord
           ActiveRecord::Base.pluralize_table_names = original_pluralize_table_names
           @connection.drop_table "testing", if_exists: true
         end
+      end
+
+      test "multiple foreign keys can be added to the same table" do
+        @connection.create_table :testings do |t|
+          t.integer :col_1
+          t.integer :col_2
+
+          t.foreign_key :testing_parents, column: :col_1
+          t.foreign_key :testing_parents, column: :col_2
+        end
+
+        fks = @connection.foreign_keys("testings")
+
+        fk_definitions = fks.map {|fk| [fk.from_table, fk.to_table, fk.column] }
+        assert_equal([["testings", "testing_parents", "col_1"],
+                      ["testings", "testing_parents", "col_2"]], fk_definitions)
       end
     end
   end

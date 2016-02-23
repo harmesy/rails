@@ -311,14 +311,14 @@ processing the entire request.
 For example:
 
 ```bash
-=> Booting WEBrick
+=> Booting Puma
 => Rails 5.0.0 application starting in development on http://0.0.0.0:3000
 => Run `rails server -h` for more startup options
-=> Notice: server is listening on all interfaces (0.0.0.0). Consider using 127.0.0.1 (--binding option)
 => Ctrl-C to shutdown server
-[2014-04-11 13:11:47] INFO  WEBrick 1.3.1
-[2014-04-11 13:11:47] INFO  ruby 2.2.2 (2015-04-13) [i686-linux]
-[2014-04-11 13:11:47] INFO  WEBrick::HTTPServer#start: pid=6370 port=3000
+Puma 2.15.3 starting...
+* Min threads: 0, max threads: 16
+* Environment: development
+* Listening on tcp://localhost:3000
 
 
 Started GET "/" for 127.0.0.1 at 2014-04-11 13:11:48 +0200
@@ -608,7 +608,7 @@ Started GET "/" for 127.0.0.1 at 2014-04-11 13:39:23 +0200
 Processing by ArticlesController#index as HTML
 
 [1, 8] in /home/davidr/Proyectos/test_app/app/models/article.rb
-   1: class Article < ActiveRecord::Base
+   1: class Article < ApplicationRecord
    2:
    3:   def self.find_recent(limit = 10)
    4:     byebug
@@ -862,8 +862,8 @@ such as Valgrind.
 
 ### Valgrind
 
-[Valgrind](http://valgrind.org/) is a Linux-only application for detecting
-C-based memory leaks and race conditions.
+[Valgrind](http://valgrind.org/) is an application for detecting C-based memory
+leaks and race conditions.
 
 There are Valgrind tools that can automatically detect many memory management
 and threading bugs, and profile your programs in detail. For example, if a C

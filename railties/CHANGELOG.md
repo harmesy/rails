@@ -1,12 +1,101 @@
+*   Change fail fast of `bin/rails test` interrupts run on error.
+
+    *Yuji Yaginuma*
+
+*   The application generator supports `--skip-listen` to opt-out of features
+    that depend on the listen gem. As of this writing they are the evented file
+    system monitor and the async plugin for spring.
+
+*   The Gemfiles of new applications include spring-watcher-listen on Linux and
+    Mac OS X (unless --skip-spring).
+
+    *Xavier Noria*
+
+*   New applications are generated with the evented file system monitor enabled
+    on Linux and Mac OS X.
+
+    *Xavier Noria*
+
+*   Add dummy files for apple-touch-icon.png and apple-touch-icon.png. GH#23427
+
+    *Alexey Zabelin*
+
+## Rails 5.0.0.beta2 (February 01, 2016) ##
+
+*   Add `after_bundle` callbacks in Rails plugin templates.  Useful for allowing
+    templates to perform actions that are dependent upon `bundle install`.
+
+    *Ryan Manuel*
+
+*   Bring back `TEST=` env for `rake test` task.
+
+    *Yves Senn*
+
+*   Specify log file names or all logs to clear `rake log:clear`
+
+    Specify which logs to clear when using the `rake log:clear` task, e.g. `rake log:clear LOGS=test,staging`
+
+    Clear all logs from log/*.log e.g. `rake log:clear LOGS=all`
+
+    By default `rake log:clear` clears standard environment log files i.e. 'development,test,production'
+
+    *Pramod Shinde*
+
+*   Fix using `add_source` with a block after using `gem` in a custom generator.
+
+    *Will Fisher*
+
+
+## Rails 5.0.0.beta1 (December 18, 2015) ##
+
+*   Newly generated plugins get a `README.md` in Markdown.
+
+    *Yuji Yaginuma*
+
+*   The generated config file for the development environment includes a new
+    config line, commented out, showing how to enable the evented file watcher.
+
+    *Xavier Noria*
+
+*   `config.debug_exception_response_format` configures the format used
+    in responses when errors occur in development mode.
+
+    Set `config.debug_exception_response_format` to render an HTML page with
+    debug info (using the value `:default`) or render debug info preserving
+    the response format (using the value `:api`).
+
+    *Jorge Bejar*
+
+*   Fix setting exit status code for rake test tasks. The exit status code
+    was not set when tests were fired with `rake`. Now, it is being set and it matches
+    behavior of running tests via `rails` command (`rails test`), so no matter if
+    `rake test` or `rails test` command is used the exit code will be set.
+
+    *Arkadiusz Fal*
+
+*   Add Command infrastructure to replace rake.
+
+    Also move `rake dev:cache` to new infrastructure. You'll need to use
+    `rails dev:cache` to toggle development caching from now on.
+
+    *Chuck Callebs*
+
+*   Allow use of minitest-rails gem with Rails test runner.
+
+    Fixes #22455.
+
+    *Chris Kottom*
+
+*   Add `bin/test` script to rails plugin.
+
+    `bin/test` can use the same API as `bin/rails test`.
+
+    *Yuji Yaginuma*
+
 *   Make `static_index` part of the `config.public_file_server` config and
     call it `public_file_server.index_name`.
 
     *Yuki Nishijima*
-
-*   Generated `Gemfile`s for new applications include a new dependency on
-    [listen](https://github.com/guard/listen) commented out.
-
-    *Puneet Agarwal* and *Xavier Noria*
 
 *   Deprecate `serve_static_files` in favor of `public_file_server.enabled`.
 
@@ -156,7 +245,7 @@
 *   Fix STATS_DIRECTORIES already defined warning when running rake from within
     the top level directory of an engine that has a test app.
 
-    Fixes #20510
+    Fixes #20510.
 
     *Ersin Akinci*
 
@@ -204,13 +293,13 @@
     middleware for API apps & generators generates the right files,
     folders and configurations.
 
-    *Santiago Pastorino & Jorge Bejar*
+    *Santiago Pastorino*, *Jorge Bejar*
 
 *   Make generated scaffold functional tests work inside engines.
 
     *Yuji Yaginuma*
 
-*   Generator a `.keep` file in the `tmp` folder by default as many scripts
+*   Generate a `.keep` file in the `tmp` folder by default as many scripts
     assume the existence of this folder and most would fail if it is absent.
 
     See #20299.
@@ -276,7 +365,7 @@
 *   Created rake restart task. Restarts your Rails app by touching the
     `tmp/restart.txt`.
 
-    Fixes #18876.
+    See #18876.
 
     *Hyonjee Joo*
 

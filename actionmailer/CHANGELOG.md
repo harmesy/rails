@@ -1,5 +1,18 @@
+*   Reset `ActionMailer::Base.deliveries` after every test in
+    `ActionDispatch::IntegrationTest`.
+
+    *Yves Senn*
+
+
+## Rails 5.0.0.beta2 (February 01, 2016) ##
+
+*   No changes.
+
+
+## Rails 5.0.0.beta1 (December 18, 2015) ##
+
 *   `config.force_ssl = true` will set
-    `config.action_mailer.default_url_options = { protocol: 'https' }`
+    `config.action_mailer.default_url_options = { protocol: 'https' }`.
 
     *Andrew Kampjes*
 
@@ -58,7 +71,7 @@
 
     *Carlos Souza*
 
-*   Remove deprecate `*_path` helpers in email views.
+*   Remove deprecated `*_path` helpers in email views.
 
     *Rafael Mendonça França*
 

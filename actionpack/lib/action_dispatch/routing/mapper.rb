@@ -11,7 +11,7 @@ module ActionDispatch
     class Mapper
       URL_OPTIONS = [:protocol, :subdomain, :domain, :host, :port]
 
-      class Constraints < Endpoint #:nodoc:
+      class Constraints < Routing::Endpoint #:nodoc:
         attr_reader :app, :constraints
 
         SERVE = ->(app, req) { app.serve req }
@@ -107,6 +107,7 @@ module ActionDispatch
           @ast                = ast
           @anchor             = anchor
           @via                = via
+          @internal           = options[:internal]
 
           path_params = ast.find_all(&:symbol?).map(&:to_sym)
 
@@ -148,7 +149,8 @@ module ActionDispatch
                             required_defaults,
                             defaults,
                             request_method,
-                            precedence)
+                            precedence,
+                            @internal)
 
           route
         end
@@ -184,25 +186,31 @@ module ActionDispatch
         def build_path(ast, requirements, anchor)
           pattern = Journey::Path::Pattern.new(ast, requirements, JOINED_SEPARATORS, anchor)
 
-          # Get all the symbol nodes followed by literals that are not the
-          # dummy node.
-          symbols = ast.find_all { |n|
-            n.cat? && n.left.symbol? && n.right.cat? && n.right.left.literal?
-          }.map(&:left)
+          # Find all the symbol nodes that are adjacent to literal nodes and alter
+          # the regexp so that Journey will partition them into custom routes.
+          ast.find_all { |node|
+            next unless node.cat?
 
-          # Get all the symbol nodes preceded by literals.
-          symbols.concat ast.find_all { |n|
-            n.cat? && n.left.literal? && n.right.cat? && n.right.left.symbol?
-          }.map { |n| n.right.left }
+            if node.left.literal? && node.right.symbol?
+              symbol = node.right
+            elsif node.left.literal? && node.right.cat? && node.right.left.symbol?
+              symbol = node.right.left
+            elsif node.left.symbol? && node.right.literal?
+              symbol = node.left
+            elsif node.left.symbol? && node.right.cat? && node.right.left.literal?
+              symbol = node.left
+            else
+              next
+            end
 
-          symbols.each { |x|
-            x.regexp = /(?:#{Regexp.union(x.regexp, '-')})+/
+            if symbol
+              symbol.regexp = /(?:#{Regexp.union(symbol.regexp, '-')})+/
+            end
           }
 
           pattern
         end
         private :build_path
-
 
         private
           def add_wildcard_options(options, formatted, path_ast)
@@ -387,24 +395,6 @@ module ActionDispatch
       end
 
       module Base
-        # You can specify what Rails should route "/" to with the root method:
-        #
-        #   root to: 'pages#main'
-        #
-        # For options, see +match+, as +root+ uses it internally.
-        #
-        # You can also pass a string which will expand
-        #
-        #   root 'pages#main'
-        #
-        # You should put the root route at the top of <tt>config/routes.rb</tt>,
-        # because this means it will be matched first. As this is the most popular route
-        # of most Rails applications, this is beneficial.
-        def root(options = {})
-          name = has_named_route?(:root) ? nil : :root
-          match '/', { as: name, via:  :get }.merge!(options)
-        end
-
         # Matches a url pattern to one or more routes.
         #
         # You should not use the +match+ method in your router
@@ -600,17 +590,20 @@ module ActionDispatch
         def mount(app, options = nil)
           if options
             path = options.delete(:at)
-          else
-            unless Hash === app
-              raise ArgumentError, "must be called with mount point"
-            end
-
+          elsif Hash === app
             options = app
             app, path = options.find { |k, _| k.respond_to?(:call) }
             options.delete(app) if app
           end
 
-          raise "A rack application must be specified" unless path
+          raise ArgumentError, "A rack application must be specified" unless app.respond_to?(:call)
+          raise ArgumentError, <<-MSG.strip_heredoc unless path
+            Must be called with mount point
+
+              mount SomeRackApp, at: "some_route"
+              or
+              mount(SomeRackApp => "some_route")
+          MSG
 
           rails_app = rails_app? app
           options[:as] ||= app_name(app, rails_app)
@@ -1686,7 +1679,20 @@ to this:
           @set.add_route(mapping, ast, as, anchor)
         end
 
-        def root(path, options={})
+        # You can specify what Rails should route "/" to with the root method:
+        #
+        #   root to: 'pages#main'
+        #
+        # For options, see +match+, as +root+ uses it internally.
+        #
+        # You can also pass a string which will expand
+        #
+        #   root 'pages#main'
+        #
+        # You should put the root route at the top of <tt>config/routes.rb</tt>,
+        # because this means it will be matched first. As this is the most popular route
+        # of most Rails applications, this is beneficial.
+        def root(path, options = {})
           if path.is_a?(String)
             options[:to] = path
           elsif path.is_a?(Hash) and options.empty?
@@ -1698,11 +1704,11 @@ to this:
           if @scope.resources?
             with_scope_level(:root) do
               path_scope(parent_resource.path) do
-                super(options)
+                match_root_route(options)
               end
             end
           else
-            super(options)
+            match_root_route(options)
           end
         end
 
@@ -1896,6 +1902,11 @@ to this:
           yield
         ensure
           @scope = @scope.parent
+        end
+
+        def match_root_route(options)
+          name = has_named_route?(:root) ? nil : :root
+          match '/', { :as => name, :via => :get }.merge!(options)
         end
       end
 

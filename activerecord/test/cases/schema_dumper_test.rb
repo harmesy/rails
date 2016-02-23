@@ -38,6 +38,7 @@ class SchemaDumperTest < ActiveRecord::TestCase
     assert_match %r{create_table "accounts"}, output
     assert_match %r{create_table "authors"}, output
     assert_no_match %r{create_table "schema_migrations"}, output
+    assert_no_match %r{create_table "ar_internal_metadata"}, output
   end
 
   def test_schema_dump_uses_force_cascade_on_create_table
@@ -117,8 +118,8 @@ class SchemaDumperTest < ActiveRecord::TestCase
 
       assert_match %r{c_int_4.*}, output
       assert_no_match %r{c_int_4.*limit:}, output
-    elsif current_adapter?(:MysqlAdapter, :Mysql2Adapter)
-      assert_match %r{c_int_without_limit.*limit: 4}, output
+    elsif current_adapter?(:Mysql2Adapter)
+      assert_match %r{c_int_without_limit"$}, output
 
       assert_match %r{c_int_1.*limit: 1}, output
       assert_match %r{c_int_2.*limit: 2}, output
@@ -158,6 +159,7 @@ class SchemaDumperTest < ActiveRecord::TestCase
     assert_no_match %r{create_table "accounts"}, output
     assert_match %r{create_table "authors"}, output
     assert_no_match %r{create_table "schema_migrations"}, output
+    assert_no_match %r{create_table "ar_internal_metadata"}, output
   end
 
   def test_schema_dump_with_regexp_ignored_table
@@ -165,27 +167,28 @@ class SchemaDumperTest < ActiveRecord::TestCase
     assert_no_match %r{create_table "accounts"}, output
     assert_match %r{create_table "authors"}, output
     assert_no_match %r{create_table "schema_migrations"}, output
+    assert_no_match %r{create_table "ar_internal_metadata"}, output
   end
 
   def test_schema_dumps_index_columns_in_right_order
-    index_definition = standard_dump.split(/\n/).grep(/t\.index.*company_index/).first.strip
-    if current_adapter?(:MysqlAdapter, :Mysql2Adapter, :PostgreSQLAdapter)
-      assert_equal 't.index ["firm_id", "type", "rating"], name: "company_index", using: :btree', index_definition
+    index_definition = standard_dump.split(/\n/).grep(/add_index.*companies/).first.strip
+    if current_adapter?(:Mysql2Adapter, :PostgreSQLAdapter)
+      assert_equal 'add_index "companies", ["firm_id", "type", "rating"], name: "company_index", using: :btree', index_definition
     else
-      assert_equal 't.index ["firm_id", "type", "rating"], name: "company_index"', index_definition
+      assert_equal 'add_index "companies", ["firm_id", "type", "rating"], name: "company_index"', index_definition
     end
   end
 
   def test_schema_dumps_partial_indices
-    index_definition = standard_dump.split(/\n/).grep(/t\.index.*company_partial_index/).first.strip
+    index_definition = standard_dump.split(/\n/).grep(/add_index.*company_partial_index/).first.strip
     if current_adapter?(:PostgreSQLAdapter)
-      assert_equal 't.index ["firm_id", "type"], name: "company_partial_index", where: "(rating > 10)", using: :btree', index_definition
-    elsif current_adapter?(:MysqlAdapter, :Mysql2Adapter)
-      assert_equal 't.index ["firm_id", "type"], name: "company_partial_index", using: :btree', index_definition
+      assert_equal 'add_index "companies", ["firm_id", "type"], name: "company_partial_index", where: "(rating > 10)", using: :btree', index_definition
+    elsif current_adapter?(:Mysql2Adapter)
+      assert_equal 'add_index "companies", ["firm_id", "type"], name: "company_partial_index", using: :btree', index_definition
     elsif current_adapter?(:SQLite3Adapter) && ActiveRecord::Base.connection.supports_partial_index?
-      assert_equal 't.index ["firm_id", "type"], name: "company_partial_index", where: "rating > 10"', index_definition
+      assert_equal 'add_index "companies", ["firm_id", "type"], name: "company_partial_index", where: "rating > 10"', index_definition
     else
-      assert_equal 't.index ["firm_id", "type"], name: "company_partial_index"', index_definition
+      assert_equal 'add_index "companies", ["firm_id", "type"], name: "company_partial_index"', index_definition
     end
   end
 
@@ -201,7 +204,7 @@ class SchemaDumperTest < ActiveRecord::TestCase
     assert_match %r{t\.boolean\s+"has_fun",.+default: false}, output
   end
 
-  if current_adapter?(:MysqlAdapter, :Mysql2Adapter)
+  if current_adapter?(:Mysql2Adapter)
     def test_schema_dump_should_add_default_value_for_mysql_text_field
       output = standard_dump
       assert_match %r{t\.text\s+"body",\s+limit: 65535,\s+null: false$}, output
@@ -232,8 +235,8 @@ class SchemaDumperTest < ActiveRecord::TestCase
 
     def test_schema_dumps_index_type
       output = standard_dump
-      assert_match %r{t\.index \["awesome"\], name: "index_key_tests_on_awesome", type: :fulltext}, output
-      assert_match %r{t\.index \["pizza"\], name: "index_key_tests_on_pizza", using: :btree}, output
+      assert_match %r{add_index "key_tests", \["awesome"\], name: "index_key_tests_on_awesome", type: :fulltext}, output
+      assert_match %r{add_index "key_tests", \["pizza"\], name: "index_key_tests_on_pizza", using: :btree}, output
     end
   end
 
@@ -312,7 +315,7 @@ class SchemaDumperTest < ActiveRecord::TestCase
     end
   end
 
-  class CreateDogMigration < ActiveRecord::Migration
+  class CreateDogMigration < ActiveRecord::Migration::Current
     def up
       create_table("dog_owners") do |t|
       end
@@ -342,6 +345,7 @@ class SchemaDumperTest < ActiveRecord::TestCase
     assert_no_match %r{create_table "foo_.+_bar"}, output
     assert_no_match %r{add_index "foo_.+_bar"}, output
     assert_no_match %r{create_table "schema_migrations"}, output
+    assert_no_match %r{create_table "ar_internal_metadata"}, output
 
     if ActiveRecord::Base.connection.supports_foreign_keys?
       assert_no_match %r{add_foreign_key "foo_.+_bar"}, output
@@ -351,6 +355,38 @@ class SchemaDumperTest < ActiveRecord::TestCase
     migration.migrate(:down)
 
     ActiveRecord::Base.table_name_suffix = ActiveRecord::Base.table_name_prefix = ''
+    $stdout = original
+  end
+
+  def test_schema_dump_with_table_name_prefix_and_ignoring_tables
+    original, $stdout = $stdout, StringIO.new
+
+    create_cat_migration = Class.new(ActiveRecord::Migration::Current) do
+      def change
+        create_table("cats") do |t|
+        end
+        create_table("omg_cats") do |t|
+        end
+      end
+    end
+
+    original_table_name_prefix = ActiveRecord::Base.table_name_prefix
+    original_schema_dumper_ignore_tables = ActiveRecord::SchemaDumper.ignore_tables
+    ActiveRecord::Base.table_name_prefix = 'omg_'
+    ActiveRecord::SchemaDumper.ignore_tables = ["cats"]
+    migration = create_cat_migration.new
+    migration.migrate(:up)
+
+    stream = StringIO.new
+    output = ActiveRecord::SchemaDumper.dump(ActiveRecord::Base.connection, stream).string
+
+    assert_match %r{create_table "omg_cats"}, output
+    refute_match %r{create_table "cats"}, output
+  ensure
+    migration.migrate(:down)
+    ActiveRecord::Base.table_name_prefix = original_table_name_prefix
+    ActiveRecord::SchemaDumper.ignore_tables = original_schema_dumper_ignore_tables
+
     $stdout = original
   end
 end

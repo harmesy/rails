@@ -214,12 +214,16 @@ module Rails
     #       url: http://localhost:3001
     #       namespace: my_app_development
     #
-    #     # config/production.rb
+    #     # config/environments/production.rb
     #     Rails.application.configure do
     #       config.middleware.use ExceptionNotifier, config_for(:exception_notification)
     #     end
     def config_for(name, env: Rails.env)
-      yaml = Pathname.new("#{paths["config"].existent.first}/#{name}.yml")
+      if name.is_a?(Pathname)
+        yaml = name
+      else
+        yaml = Pathname.new("#{paths["config"].existent.first}/#{name}.yml")
+      end
 
       if yaml.exist?
         require "erb"

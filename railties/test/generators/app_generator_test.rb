@@ -26,6 +26,8 @@ DEFAULT_APP_FILES = %w(
   config/environments
   config/initializers
   config/locales
+  config/cable.yml
+  config/puma.rb
   db
   lib
   lib/tasks
@@ -149,6 +151,12 @@ class AppGeneratorTest < Rails::Generators::TestCase
     run_generator
 
     assert_file("config/initializers/cookies_serializer.rb", /Rails\.application\.config\.action_dispatch\.cookies_serializer = :json/)
+  end
+
+  def test_new_application_not_include_api_initializers
+    run_generator
+
+    assert_no_file 'config/initializers/cors.rb'
   end
 
   def test_rails_update_keep_the_cookie_serializer_if_it_is_already_configured
@@ -330,10 +338,19 @@ class AppGeneratorTest < Rails::Generators::TestCase
     end
   end
 
+  def test_generator_if_skip_puma_is_given
+    run_generator [destination_root, "--skip-puma"]
+    assert_no_file "config/puma.rb"
+    assert_file "Gemfile" do |content|
+      assert_no_match(/puma/, content)
+    end
+  end
+
   def test_generator_if_skip_active_record_is_given
     run_generator [destination_root, "--skip-active-record"]
     assert_no_file "config/database.yml"
     assert_no_file "config/initializers/active_record_belongs_to_required_by_default.rb"
+    assert_no_file "app/models/application_record.rb"
     assert_file "config/application.rb", /#\s+require\s+["']active_record\/railtie["']/
     assert_file "test/test_helper.rb" do |helper_content|
       assert_no_match(/fixtures :all/, helper_content)
@@ -354,6 +371,13 @@ class AppGeneratorTest < Rails::Generators::TestCase
     end
   end
 
+  def test_generator_has_assets_gems
+    run_generator
+
+    assert_gem 'sass-rails'
+    assert_gem 'uglifier'
+  end
+
   def test_generator_if_skip_sprockets_is_given
     run_generator [destination_root, "--skip-sprockets"]
     assert_no_file "config/initializers/assets.rb"
@@ -361,9 +385,10 @@ class AppGeneratorTest < Rails::Generators::TestCase
       assert_match(/#\s+require\s+["']sprockets\/railtie["']/, content)
     end
     assert_file "Gemfile" do |content|
+      assert_no_match(/jquery-rails/, content)
       assert_no_match(/sass-rails/, content)
       assert_no_match(/uglifier/, content)
-      assert_match(/coffee-rails/, content)
+      assert_no_match(/coffee-rails/, content)
     end
     assert_file "config/environments/development.rb" do |content|
       assert_no_match(/config\.assets\.debug = true/, content)
@@ -373,6 +398,25 @@ class AppGeneratorTest < Rails::Generators::TestCase
       assert_no_match(/config\.assets\.js_compressor = :uglifier/, content)
       assert_no_match(/config\.assets\.css_compressor = :sass/, content)
     end
+  end
+
+  def test_generator_if_skip_action_cable_is_given
+    run_generator [destination_root, "--skip-action-cable"]
+    assert_file "config/application.rb", /#\s+require\s+["']action_cable\/engine["']/
+    assert_no_file "config/cable.yml"
+    assert_no_file "app/assets/javascripts/cable.coffee"
+    assert_no_file "app/channels"
+    assert_file "app/views/layouts/application.html.erb" do |content|
+      assert_no_match(/action_cable_meta_tag/, content)
+    end
+    assert_file "Gemfile" do |content|
+      assert_no_match(/redis/, content)
+    end
+  end
+
+  def test_action_cable_redis_gems
+    run_generator
+    assert_file "Gemfile", /^# gem 'redis'/
   end
 
   def test_inclusion_of_javascript_runtime
@@ -432,6 +476,31 @@ class AppGeneratorTest < Rails::Generators::TestCase
       end
     else
       assert_gem 'byebug'
+    end
+  end
+
+  def test_inclusion_of_listen_related_configuration_by_default
+    run_generator
+    if RbConfig::CONFIG['host_os'] =~ /darwin|linux/
+      assert_listen_related_configuration
+    else
+      assert_no_listen_related_configuration
+    end
+  end
+
+  def test_non_inclusion_of_listen_related_configuration_if_skip_listen
+    run_generator [destination_root, '--skip-listen']
+    assert_no_listen_related_configuration
+  end
+
+  def test_evented_file_update_checker_config
+    run_generator
+    assert_file 'config/environments/development.rb' do |content|
+      if RbConfig::CONFIG['host_os'] =~ /darwin|linux/
+        assert_match(/^\s*config.file_watcher = ActiveSupport::EventedFileUpdateChecker/, content)
+      else
+        assert_match(/^\s*# config.file_watcher = ActiveSupport::EventedFileUpdateChecker/, content)
+      end
     end
   end
 
@@ -505,7 +574,7 @@ class AppGeneratorTest < Rails::Generators::TestCase
 
     assert_file "Gemfile" do |content|
       assert_match(/gem 'web-console',\s+github: 'rails\/web-console'/, content)
-      assert_no_match(/gem 'web-console', '~> 2.0'/, content)
+      assert_no_match(/gem 'web-console', '~> 3.0'/, content)
     end
   end
 
@@ -514,7 +583,7 @@ class AppGeneratorTest < Rails::Generators::TestCase
 
     assert_file "Gemfile" do |content|
       assert_match(/gem 'web-console',\s+github: 'rails\/web-console'/, content)
-      assert_no_match(/gem 'web-console', '~> 2.0'/, content)
+      assert_no_match(/gem 'web-console', '~> 3.0'/, content)
     end
   end
 
@@ -611,8 +680,6 @@ class AppGeneratorTest < Rails::Generators::TestCase
     run_generator
     folders_with_keep = %w(
       app/assets/images
-      app/mailers
-      app/models
       app/controllers/concerns
       app/models/concerns
       lib/tasks
@@ -657,9 +724,8 @@ class AppGeneratorTest < Rails::Generators::TestCase
     end
 
     sequence = ['install', 'exec spring binstub --all', 'echo ran after_bundle']
-    ensure_bundler_first = -> command do
       @sequence_step ||= 0
-
+    ensure_bundler_first = -> command do
       assert_equal sequence[@sequence_step], command, "commands should be called in sequence #{sequence}"
       @sequence_step += 1
     end
@@ -671,6 +737,8 @@ class AppGeneratorTest < Rails::Generators::TestCase
         end
       end
     end
+
+    assert_equal 3, @sequence_step
   end
 
   protected
@@ -691,6 +759,25 @@ class AppGeneratorTest < Rails::Generators::TestCase
       assert_file "Gemfile", /^\s*gem\s+["']#{gem}["'], #{constraint}$*/
     else
       assert_file "Gemfile", /^\s*gem\s+["']#{gem}["']$*/
+    end
+  end
+
+  def assert_listen_related_configuration
+    assert_gem 'listen'
+    assert_gem 'spring-watcher-listen'
+
+    assert_file 'config/environments/development.rb' do |content|
+      assert_match(/^\s*config.file_watcher = ActiveSupport::EventedFileUpdateChecker/, content)
+    end
+  end
+
+  def assert_no_listen_related_configuration
+    assert_file 'Gemfile' do |content|
+      assert_no_match(/listen/, content)
+    end
+
+    assert_file 'config/environments/development.rb' do |content|
+      assert_match(/^\s*# config.file_watcher = ActiveSupport::EventedFileUpdateChecker/, content)
     end
   end
 end
